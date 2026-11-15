@@ -1,0 +1,11 @@
+{
+  "name": "ptfs-vor",
+  "version": "1.0.0",
+  "main": "VORtest.js",
+  "scripts": {
+    "start": "node VORtest.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

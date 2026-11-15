@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PTFS 24data — Conventional VOR / DME Receiver</title>
+    <style>
+        :root {
+            --bg-panel: #14171c;
+            --bg-card: #1d222a;
+            --border-subtle: #2e3642;
+            --text-main: #e6edf3;
+            --text-muted: #8b949e;
+            --accent-amber: #ff9d2e;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-cyan: #58a6ff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: #0d1015;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 16px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 920px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Top Status Row */
+        .top-bar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        /* Control Bar */
+        .control-bar {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            padding: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+            align-items: end;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        select, button {
+            background: #12161c;
+            color: var(--text-main);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 9px 11px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        select:focus, button:hover {
+            border-color: var(--accent-cyan);
+        }
+
+        button {
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.15s;
+        }
+
+        button:hover {
+            background: #1f2630;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #12161c;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-red);
+        }
+        .dot.online { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+
+        /* Main Avionics Deck */
+        .avionics-deck {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        @media (max-width: 780px) {
+            .avionics-deck {
+                grid-template-columns: 1fr;
+                justify-items: center;
+            }
+        }
+
+        /* Conventional VOR Bezel */
+        .vor-bezel {
+            width: 370px;
+            height: 390px;
+            background: linear-gradient(145deg, #23272e, #15181d);
+            border: 3px solid #353b45;
+            border-radius: 24px;
+            padding: 18px;
+            box-shadow: 0 18px 40px rgba(0,0,0,0.65), inset 0 1px 1px rgba(255,255,255,0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            user-select: none;
+        }
+
+        .screw {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #555c68, #1c2026);
+            border: 1px solid #101216;
+        }
+        .screw::after {
+            content: '';
+            position: absolute;
+            top: 6px;
+            left: 2px;
+            width: 8px;
+            height: 1.5px;
+            background: #111;
+            transform: rotate(35deg);
+        }
+        .screw.tl { top: 12px; left: 12px; }
+        .screw.tr { top: 12px; right: 12px; }
+        .screw.bl { bottom: 12px; left: 12px; }
+        .screw.br { bottom: 12px; right: 12px; }
+
+        .vor-gauge-wrap {
+            width: 310px;
+            height: 310px;
+            border-radius: 50%;
+            background: #0b0d10;
+            border: 5px solid #090a0d;
+            box-shadow: inset 0 6px 18px rgba(0,0,0,0.9);
+            position: relative;
+            overflow: hidden;
+        }
+
+        svg#vorSvg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* OBS Knob & Controls */
+        .obs-controls {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            padding: 0 16px;
+        }
+
+        .obs-knob-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .obs-knob {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: repeating-conic-gradient(#2d333d 0deg 15deg, #1b1f26 15deg 30deg);
+            border: 2px solid #48505e;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.7);
+            cursor: ns-resize;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .obs-knob::after {
+            content: 'OBS';
+            font-size: 9px;
+            font-weight: 700;
+            color: #cfd8e3;
+            background: #1c2026;
+            padding: 6px 4px;
+            border-radius: 50%;
+            border: 1px solid #3c434f;
+        }
+
+        .obs-btns {
+            display: flex;
+            gap: 4px;
+        }
+
+        .obs-btns button {
+            padding: 5px 8px;
+            font-size: 11px;
+            font-family: monospace;
+        }
+
+        /* Right Side: DME & Telemetry */
+        .right-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+        }
+
+        /* Digital DME Box */
+        .dme-unit {
+            background: #101317;
+            border: 2px solid #303742;
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .dme-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            letter-spacing: 0.1em;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #222730;
+            padding-bottom: 6px;
+        }
+
+        .dme-readouts {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            text-align: center;
+        }
+
+        .dme-cell {
+            background: #080a0c;
+            border: 1px solid #20252e;
+            border-radius: 6px;
+            padding: 10px 6px;
+        }
+
+        .dme-val {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent-amber);
+            text-shadow: 0 0 10px rgba(255, 157, 46, 0.35);
+            letter-spacing: 1px;
+        }
+
+        .dme-unit-label {
+            font-size: 11px;
+            color: #9ba4b0;
+            margin-top: 2px;
+            font-weight: 600;
+        }
+
+        /* Telemetry Data Grid */
+        .telemetry-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .telemetry-card h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .telem-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .telem-item {
+            background: #13171e;
+            border: 1px solid #262d38;
+            border-radius: 6px;
+            padding: 9px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .telem-item span:first-child {
+            color: var(--text-muted);
+        }
+
+        .telem-item span:last-child {
+            font-family: 'Consolas', monospace;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Connection Status -->
+        <div class="top-bar">
+            <div class="status-pill">
+                <div id="connDot" class="dot"></div>
+                <span id="connText">Connecting to localhost:3000...</span>
+            </div>
+        </div>
+
+        <!-- Aircraft & VOR Selection Bar -->
+        <div class="control-bar">
+            <div class="field">
+                <label>Server</label>
+                <select id="serverSelect">
+                    <option value="MAIN">ATC 24 Main Server</option>
+                    <option value="EVENT">ATC 24 Event Server</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Select Aircraft (<span id="acftCount">0</span> Active)</label>
+                <select id="aircraftSelect">
+                    <option value="">-- Waiting for aircraft --</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Tuned VOR Station</label>
+                <select id="vorSelect"></select>
+            </div>
+
+            <div class="field">
+                <label>Quick Actions</label>
+                <div style="display: flex; gap: 6px;">
+                    <button id="btnNearestVor" title="Tune closest VOR to selected aircraft">Nearest VOR</button>
+                    <button id="btnCenterObs" title="Auto-center CDI (Direct TO)">Direct TO</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Avionics Panel -->
+        <div class="avionics-deck">
+            <!-- Conventional VOR Indicator -->
+            <div class="vor-bezel">
+                <div class="screw tl"></div>
+                <div class="screw tr"></div>
+                <div class="screw bl"></div>
+                <div class="screw br"></div>
+
+                <div class="vor-gauge-wrap">
+                    <svg id="vorSvg" viewBox="0 0 300 300">
+                        <defs>
+                            <!-- Barber pole pattern for OFF/NAV flag -->
+                            <pattern id="offFlagPattern" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+                                <rect width="3" height="6" fill="#d93829" />
+                                <rect x="3" width="3" height="6" fill="#f0f3f6" />
+                            </pattern>
+                        </defs>
+
+                        <!-- Rotating Compass Card -->
+                        <g id="compassCard" transform="translate(150, 150)"></g>
+
+                        <!-- Fixed Inner Dial Markings (CDI Dots & Crosshairs) -->
+                        <g id="fixedDial">
+                            <!-- Center Circle -->
+                            <circle cx="150" cy="150" r="10" fill="none" stroke="#e6edf3" stroke-width="2" />
+                            <!-- 5 Dots Left & Right (2 deg per dot = 10 deg full scale) -->
+                            <circle cx="134" cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="118" cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="102" cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="86"  cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="70"  cy="150" r="2.5" fill="#cfd8e3" />
+
+                            <circle cx="166" cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="182" cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="198" cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="214" cy="150" r="2.2" fill="#cfd8e3" />
+                            <circle cx="230" cy="150" r="2.5" fill="#cfd8e3" />
+
+                            <!-- Vertical reference ticks -->
+                            <line x1="150" y1="70" x2="150" y2="136" stroke="#47515e" stroke-width="1" stroke-dasharray="3,3" />
+                            <line x1="150" y1="164" x2="150" y2="230" stroke="#47515e" stroke-width="1" stroke-dasharray="3,3" />
+                        </g>
+
+                        <!-- TO / FROM / OFF Flag Window (Right of center) -->
+                        <g id="flagGroup" transform="translate(182, 114)">
+                            <rect x="0" y="0" width="38" height="24" rx="3" fill="#12151a" stroke="#4b5360" stroke-width="1.5" />
+                            <!-- OFF Flag -->
+                            <rect id="flagOff" x="2" y="2" width="34" height="20" rx="2" fill="url(#offFlagPattern)" />
+                            <!-- TO Flag -->
+                            <g id="flagTo" style="display: none;">
+                                <polygon points="19,4 26,12 12,12" fill="#ffffff" />
+                                <text x="19" y="21" fill="#ffffff" font-size="8.5" font-weight="bold" text-anchor="middle">TO</text>
+                            </g>
+                            <!-- FROM Flag -->
+                            <g id="flagFrom" style="display: none;">
+                                <text x="19" y="11" fill="#ffffff" font-size="8" font-weight="bold" text-anchor="middle">FROM</text>
+                                <polygon points="19,21 26,13 12,13" fill="#ffffff" />
+                            </g>
+                        </g>
+
+                        <!-- VOR / NAV Label -->
+                        <text x="102" y="129" fill="#8b949e" font-size="10" font-weight="700" text-anchor="middle">VOR</text>
+
+                        <!-- CDI Needle (Deflects horizontally from x=-80 to x=+80) -->
+                        <g id="cdiNeedle" transform="translate(0, 0)">
+                            <line x1="150" y1="68" x2="150" y2="232" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" />
+                        </g>
+
+                        <!-- Top Lubber Line / Course Index Triangle & Bottom Reciprocal Index -->
+                        <polygon points="150,36 143,22 157,22" fill="#ff9d2e" stroke="#000" stroke-width="1" />
+                        <line x1="150" y1="264" x2="150" y2="278" stroke="#ff9d2e" stroke-width="2.5" />
+                    </svg>
+                </div>
+
+                <!-- OBS Rotary Knob & Fine Buttons -->
+                <div class="obs-controls">
+                    <div class="obs-knob-group">
+                        <div id="obsKnob" class="obs-knob" title="Scroll wheel or drag up/down to rotate OBS"></div>
+                        <div>
+                            <div style="font-size: 10px; color: var(--text-muted);">OBS SEL</div>
+                            <div id="obsDigital" style="font-family: monospace; font-size: 16px; font-weight: 700; color: var(--accent-amber);">360°</div>
+                        </div>
+                    </div>
+
+                    <div class="obs-btns">
+                        <button onclick="adjustObs(-10)">-10</button>
+                        <button onclick="adjustObs(-1)">-1</button>
+                        <button onclick="adjustObs(1)">+1</button>
+                        <button onclick="adjustObs(10)">+10</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Stack: DME & Telemetry -->
+            <div class="right-stack">
+                <!-- Slant-Range DME Unit -->
+                <div class="dme-unit">
+                    <div class="dme-header">
+                        <span>DME SLANT-RANGE RECEIVER</span>
+                        <span id="dmeStationTag">IMLR VOR-DME</span>
+                    </div>
+                    <div class="dme-readouts">
+                        <div class="dme-cell">
+                            <div id="dmeDist" class="dme-val">---.-</div>
+                            <div class="dme-unit-label">SLANT NM</div>
+                        </div>
+                        <div class="dme-cell">
+                            <div id="dmeGs" class="dme-val">---</div>
+                            <div class="dme-unit-label">GS KT (REAL)</div>
+                        </div>
+                        <div class="dme-cell">
+                            <div id="dmeMin" class="dme-val">---</div>
+                            <div class="dme-unit-label">MIN ETE</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Geometry & Telemetry Breakdown -->
+                <div class="telemetry-card">
+                    <h3>Station & Aircraft Geometry</h3>
+                    <div class="telem-grid">
+                        <div class="telem-item">
+                            <span>Aircraft Radial (FROM)</span>
+                            <span id="valRadial">---°</span>
+                        </div>
+                        <div class="telem-item">
+                            <span>Bearing TO Station</span>
+                            <span id="valBearingTo">---°</span>
+                        </div>
+                        <div class="telem-item">
+                            <span>CDI Deflection</span>
+                            <span id="valCdiError">---</span>
+                        </div>
+                        <div class="telem-item">
+                            <span>Aircraft Heading</span>
+                            <span id="valHeading">---°</span>
+                        </div>
+                        <div class="telem-item">
+                            <span>Horizontal Ground Dist</span>
+                            <span id="valHorizNm">--- NM</span>
+                        </div>
+                        <div class="telem-item">
+                            <span>Aircraft Altitude</span>
+                            <span id="valAlt">--- ft</span>
+                        </div>
+                        <div class="telem-item">
+                            <span>Aircraft Coords (X, Y)</span>
+                            <span id="valAcftCoords">---, ---</span>
+                        </div>
+                        <div class="telem-item">
+                            <span>VOR Coords (X, Y)</span>
+                            <span id="valVorCoords">-19397, 14563</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Airport VOR Coordinates
+        const VOR_STATIONS = [
+            { id: 'IMLR', name: 'IMLR — Mellor Intl',      x: -19397, y: 14563 },
+            { id: 'IGAR', name: 'IGAR — Garry',            x: -15845, y: 23557 },
+            { id: 'IRFD', name: 'IRFD — Greater Rockford', x: -2992,  y: 21040 },
+            { id: 'ITRC', name: 'ITRC — Training Centre',  x: -1944,  y: 30107 },
+            { id: 'ISAU', name: 'ISAU — Sauthemptona',     x: -46040, y: 27767 },
+            { id: 'IZOL', name: 'IZOL — Izolirani',        x: 44901,  y: 3841  },
+            { id: 'IJAF', name: 'IJAF — Al Najaf',         x: 45589,  y: 274   },
+            { id: 'ISCM', name: 'ISCM — RAF Scampton',     x: 36054,  y: -5250 },
+            { id: 'IGRV', name: 'IGRV — Grindavik',        x: -43960, y: -2207 }
+        ];
+
+        // PTFS / 24data Scale Constants
+        const STUDS_PER_NMI = 3307.14286;
+        const FT_PER_STUD = 1.8372;
+        const REAL_KTS_FACTOR = 0.592172785;
+
+        // App State
+        let activeServer = 'MAIN';
+        let aircraftStores = { MAIN: {}, EVENT: {} };
+        let selectedCallsign = '';
+        let selectedVor = VOR_STATIONS[0];
+        let obsCourse = 360;
+
+        // DOM Elements
+        const serverSelect = document.getElementById('serverSelect');
+        const aircraftSelect = document.getElementById('aircraftSelect');
+        const vorSelect = document.getElementById('vorSelect');
+        const acftCountEl = document.getElementById('acftCount');
+        const compassCard = document.getElementById('compassCard');
+        const cdiNeedle = document.getElementById('cdiNeedle');
+        const flagOff = document.getElementById('flagOff');
+        const flagTo = document.getElementById('flagTo');
+        const flagFrom = document.getElementById('flagFrom');
+        const obsDigital = document.getElementById('obsDigital');
+
+        // 1. Build Rotating Compass Card SVG Ticks & Labels
+        function buildCompassCard() {
+            const labels = {
+                0: 'N', 30: '3', 60: '6', 90: 'E',
+                120: '12', 150: '15', 180: 'S', 210: '21',
+                240: '24', 270: 'W', 300: '30', 330: '33'
+            };
+
+            let svgContent = `<circle cx="0" cy="0" r="112" fill="none" stroke="#303845" stroke-width="1" />`;
+
+            for (let deg = 0; deg < 360; deg += 5) {
+                const isMajor = deg % 30 === 0;
+                const isMed = deg % 10 === 0;
+                const rOuter = 112;
+                const rInner = isMajor ? 98 : (isMed ? 103 : 107);
+                const strokeW = isMajor ? 2.2 : (isMed ? 1.4 : 1);
+                const color = isMajor ? '#ffffff' : '#9ba4b0';
+
+                svgContent += `<line x1="0" y1="${-rOuter}" x2="0" y2="${-rInner}" stroke="${color}" stroke-width="${strokeW}" transform="rotate(${deg})" />`;
+
+                if (isMajor) {
+                    const isCardinal = deg % 90 === 0;
+                    const textColor = deg === 0 ? '#ff9d2e' : '#f0f6fc';
+                    const fontSize = isCardinal ? 15 : 13;
+                    svgContent += `
+                        <g transform="rotate(${deg})">
+                            <text x="0" y="-82" fill="${textColor}" font-size="${fontSize}" font-weight="700" text-anchor="middle">${labels[deg]}</text>
+                        </g>
+                    `;
+                }
+            }
+            compassCard.innerHTML = svgContent;
+        }
+
+        // 2. Populate VOR Dropdown
+        function initVorDropdown() {
+            VOR_STATIONS.forEach((vor, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.textContent = `${vor.name} (${vor.x}, ${vor.y})`;
+                vorSelect.appendChild(opt);
+            });
+        }
+
+        function formatDeg(deg) {
+            const norm = Math.round(((deg % 360) + 360) % 360);
+            return String(norm === 0 ? 360 : norm).padStart(3, '0');
+        }
+
+        function setObs(newObs) {
+            let norm = Math.round(((newObs % 360) + 360) % 360);
+            if (norm === 0) norm = 360;
+            obsCourse = norm;
+            obsDigital.textContent = `${formatDeg(obsCourse)}°`;
+            compassCard.setAttribute('transform', `translate(150, 150) rotate(${-obsCourse})`);
+            updateInstruments();
+        }
+
+        function adjustObs(delta) {
+            setObs(obsCourse + delta);
+        }
+
+        // 3. Populate & Sync Aircraft List
+        function refreshAircraftDropdown() {
+            const store = aircraftStores[activeServer] || {};
+            const callsigns = Object.keys(store).sort();
+            acftCountEl.textContent = callsigns.length;
+
+            const previousSelection = selectedCallsign;
+            aircraftSelect.innerHTML = '';
+
+            if (callsigns.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = '-- No aircraft active on server --';
+                aircraftSelect.appendChild(opt);
+                selectedCallsign = '';
+                updateInstruments();
+                return;
+            }
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '-- Choose an airplane --';
+            aircraftSelect.appendChild(placeholder);
+
+            callsigns.forEach(cs => {
+                const acft = store[cs];
+                const opt = document.createElement('option');
+                opt.value = cs;
+                opt.textContent = `${cs} | ${acft.aircraftType} (${acft.playerName})`;
+                aircraftSelect.appendChild(opt);
+            });
+
+            if (previousSelection && store[previousSelection]) {
+                aircraftSelect.value = previousSelection;
+                selectedCallsign = previousSelection;
+            } else {
+                selectedCallsign = '';
+            }
+            updateInstruments();
+        }
+
+        // 4. Core VOR & Slant-Range DME Calculation
+        function updateInstruments() {
+            document.getElementById('dmeStationTag').textContent = `${selectedVor.id} VOR-DME`;
+            document.getElementById('valVorCoords').textContent = `${selectedVor.x}, ${selectedVor.y}`;
+
+            const store = aircraftStores[activeServer] || {};
+            const acft = store[selectedCallsign];
+
+            if (!acft || !acft.position) {
+                flagOff.style.display = 'block';
+                flagTo.style.display = 'none';
+                flagFrom.style.display = 'none';
+                cdiNeedle.setAttribute('transform', 'translate(0, 0)');
+
+                document.getElementById('dmeDist').textContent = '---.-';
+                document.getElementById('dmeGs').textContent = '---';
+                document.getElementById('dmeMin').textContent = '---';
+                document.getElementById('valRadial').textContent = '---°';
+                document.getElementById('valBearingTo').textContent = '---°';
+                document.getElementById('valCdiError').textContent = 'NO SIGNAL';
+                document.getElementById('valHeading').textContent = '---°';
+                document.getElementById('valHorizNm').textContent = '--- NM';
+                document.getElementById('valAlt').textContent = '--- ft';
+                document.getElementById('valAcftCoords').textContent = '---, ---';
+                return;
+            }
+
+            const dx = acft.position.x - selectedVor.x;
+            const dy = acft.position.y - selectedVor.y;
+
+            const radial = ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360;
+            const bearingTo = (radial + 180) % 360;
+
+            const diff = ((radial - obsCourse + 540) % 360) - 180;
+            const absDiff = Math.abs(diff);
+
+            let courseError = 0;
+            let flagState = 'OFF';
+
+            if (absDiff < 88.5) {
+                flagState = 'FROM';
+                courseError = -diff;
+            } else if (absDiff > 91.5) {
+                flagState = 'TO';
+                const reciprocalObs = (obsCourse + 180) % 360;
+                const recDiff = ((radial - reciprocalObs + 540) % 360) - 180;
+                courseError = recDiff;
+            } else {
+                flagState = 'OFF';
+                courseError = 0;
+            }
+
+            flagOff.style.display = flagState === 'OFF' ? 'block' : 'none';
+            flagTo.style.display = flagState === 'TO' ? 'block' : 'none';
+            flagFrom.style.display = flagState === 'FROM' ? 'block' : 'none';
+
+            const clampedError = Math.max(-10, Math.min(10, courseError));
+            const pixelOffset = (clampedError / 10) * 80;
+            cdiNeedle.setAttribute('transform', `translate(${pixelOffset.toFixed(2)}, 0)`);
+
+            // Slant-Range DME Calculation
+            const horizStuds = Math.hypot(dx, dy);
+            const horizNm = horizStuds / STUDS_PER_NMI;
+
+            const altFt = acft.altitude || 0;
+            const altStuds = altFt / FT_PER_STUD;
+            const slantStuds = Math.hypot(horizStuds, altStuds);
+            const slantNm = slantStuds / STUDS_PER_NMI;
+
+            // Groundspeed in real knots & ETE
+            const realGsKts = (acft.groundSpeed || 0) * REAL_KTS_FACTOR;
+            const eteMinutes = realGsKts > 5 ? (slantNm / realGsKts) * 60 : null;
+
+            document.getElementById('dmeDist').textContent = slantNm.toFixed(1).padStart(5, ' ');
+            document.getElementById('dmeGs').textContent = Math.round(realGsKts).toString().padStart(3, ' ');
+            document.getElementById('dmeMin').textContent = eteMinutes !== null && eteMinutes < 999
+                ? Math.round(eteMinutes).toString().padStart(3, ' ')
+                : '---';
+
+            const sideText = Math.abs(courseError) < 0.2
+                ? 'ON COURSE'
+                : `${Math.abs(courseError).toFixed(1)}° ${courseError < 0 ? 'LEFT' : 'RIGHT'}`;
+
+            document.getElementById('valRadial').textContent = `R-${formatDeg(radial)}`;
+            document.getElementById('valBearingTo').textContent = `${formatDeg(bearingTo)}°`;
+            document.getElementById('valCdiError').textContent = `${sideText} (${flagState})`;
+            document.getElementById('valHeading').textContent = `${formatDeg(acft.heading)}°`;
+            document.getElementById('valHorizNm').textContent = `${horizNm.toFixed(2)} NM`;
+            document.getElementById('valAlt').textContent = `${Math.round(altFt).toLocaleString()} ft`;
+            document.getElementById('valAcftCoords').textContent = `${Math.round(acft.position.x)}, ${Math.round(acft.position.y)}`;
+        }
+
+        // 5. Event Listeners (OBS Wheel/Drag, Dropdowns, Helper Buttons)
+        const obsKnob = document.getElementById('obsKnob');
+        obsKnob.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            adjustObs(e.deltaY < 0 ? 1 : -1);
+        }, { passive: false });
+
+        let isDraggingKnob = false;
+        let lastDragY = 0;
+        obsKnob.addEventListener('mousedown', (e) => {
+            isDraggingKnob = true;
+            lastDragY = e.clientY;
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isDraggingKnob) return;
+            const deltaY = lastDragY - e.clientY;
+            if (Math.abs(deltaY) >= 4) {
+                adjustObs(deltaY > 0 ? 1 : -1);
+                lastDragY = e.clientY;
+            }
+        });
+        window.addEventListener('mouseup', () => { isDraggingKnob = false; });
+
+        serverSelect.addEventListener('change', (e) => {
+            activeServer = e.target.value;
+            refreshAircraftDropdown();
+        });
+
+        aircraftSelect.addEventListener('change', (e) => {
+            selectedCallsign = e.target.value;
+            updateInstruments();
+        });
+
+        vorSelect.addEventListener('change', (e) => {
+            selectedVor = VOR_STATIONS[Number(e.target.value)];
+            updateInstruments();
+        });
+
+        document.getElementById('btnNearestVor').addEventListener('click', () => {
+            const acft = (aircraftStores[activeServer] || {})[selectedCallsign];
+            if (!acft || !acft.position) return;
+
+            let bestIdx = 0;
+            let minDist = Infinity;
+            VOR_STATIONS.forEach((vor, idx) => {
+                const d = Math.hypot(acft.position.x - vor.x, acft.position.y - vor.y);
+                if (d < minDist) {
+                    minDist = d;
+                    bestIdx = idx;
+                }
+            });
+            vorSelect.value = bestIdx;
+            selectedVor = VOR_STATIONS[bestIdx];
+            updateInstruments();
+        });
+
+        document.getElementById('btnCenterObs').addEventListener('click', () => {
+            const acft = (aircraftStores[activeServer] || {})[selectedCallsign];
+            if (!acft || !acft.position) return;
+            const dx = acft.position.x - selectedVor.x;
+            const dy = acft.position.y - selectedVor.y;
+            const radial = ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360;
+            const bearingTo = (radial + 180) % 360;
+            setObs(bearingTo);
+        });
+
+        // 6. Connect to Local SSE Telemetry Bridge
+        function connectTelemetry() {
+            const connDot = document.getElementById('connDot');
+            const connText = document.getElementById('connText');
+            const sseUrl = window.location.protocol === 'file:'
+                ? 'http://localhost:3000/events'
+                : '/events';
+            const evtSource = new EventSource(sseUrl);
+
+            evtSource.onopen = () => {
+                connDot.classList.add('online');
+                connText.textContent = `Live Feed Connected (${window.location.host || 'localhost:3000'})`;
+            };
+
+            evtSource.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'INIT') {
+                    aircraftStores.MAIN = msg.mainAircraft || {};
+                    aircraftStores.EVENT = msg.eventAircraft || {};
+                    refreshAircraftDropdown();
+                } else if (msg.type === 'TELEMETRY') {
+                    aircraftStores[msg.server] = msg.aircraft || {};
+                    if (msg.server === activeServer) {
+                        refreshAircraftDropdown();
+                    }
+                } else if (msg.type === 'STATUS') {
+                    connDot.classList.toggle('online', msg.connected);
+                    connText.textContent = msg.connected
+                        ? `Live Feed Connected (${window.location.host || 'localhost:3000'})`
+                        : 'Bridge Connected — Waiting for 24data...';
+                }
+            };
+
+            evtSource.onerror = () => {
+                connDot.classList.remove('online');
+                connText.textContent = 'Bridge Offline — Run "node VORtest.js"';
+            };
+        }
+
+        // Initialize UI
+        buildCompassCard();
+        initVorDropdown();
+        setObs(360);
+        connectTelemetry();
+    </script>
+</body>
+</html>
